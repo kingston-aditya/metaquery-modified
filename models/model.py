@@ -7,7 +7,6 @@
 import math
 from typing import List
 
-from numpy import true_divide
 import torch
 from torch import nn
 from torchvision import transforms as v2
@@ -210,7 +209,7 @@ class MLLMInContext(PreTrainedModel):
                 num_key_value_heads=self.connector_in_dim // 64,
                 initializer_range=0.014,
                 use_cache=False,
-                rope=true_divide,
+                rope=True,
                 qk_norm=True,
             ),
         )
