@@ -9,6 +9,7 @@ import shutil
 from dataclasses import dataclass, field
 
 import PIL.Image
+import yaml
 import torch
 import transformers
 import wandb
@@ -118,8 +119,8 @@ class TrainingArguments(transformers.TrainingArguments):
         try:
             self = possible_override_args(override_args, self)
             self = get_full_dirs(self)
-        except:
-            pass
+        except (FileNotFoundError, yaml.YAMLError) as exc:
+            print(f"Failed to load override config: {exc}")
         super().__post_init__()
 
 
