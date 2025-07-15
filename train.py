@@ -87,9 +87,9 @@ class TrainingArguments(transformers.TrainingArguments):
     gradient_accumulation_steps: int = 1
     optim: str = "adamw_torch"
     learning_rate: float = 1e-4
-    weight_decay: float = 0.05
+    weight_decay: float = 0.1
     adam_beta1: float = 0.9
-    adam_beta2: float = 0.999
+    adam_beta2: float = 0.95
     adam_epsilon: float = 1e-8
     max_grad_norm: float = 0.5
     lr_scheduler_type: str = "cosine_with_min_lr"
