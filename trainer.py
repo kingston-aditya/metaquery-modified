@@ -228,7 +228,8 @@ class MetaQueryTrainer(Trainer):
             print(f"Grad Norm Spiked: {grad_norm} > 10 * {self.running_grad_norm}")
             self.control.should_training_stop = True
 
-        if np.isnan(grad_norm) or grad_norm > 1e6:
+        grad_norm_val = grad_norm.cpu().item()
+        if np.isnan(grad_norm_val) or grad_norm_val > 1e6:
             print(
                 f"NaN grad norm detected in process {self.args.process_index} on {os.uname().nodename}"
             )
@@ -305,9 +306,9 @@ class MetaQueryCallback(TrainerCallback):
             stat = []
             for i, (n, p) in enumerate(model.named_parameters()):
                 stat.append([i, n, p.shape, p.dtype, p.requires_grad])
-            print(
-                tabulate(stat, headers=["idx", "name", "shape", "dtype", "trainable"])
-            )
+            # print(
+            #     tabulate(stat, headers=["idx", "name", "shape", "dtype", "trainable"])
+            # )
 
             if hasattr(model.model, "connector") and not isinstance(
                 model.model.connector, nn.Identity

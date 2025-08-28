@@ -34,6 +34,7 @@ class MetaQueryConfig(MLLMInContextConfig):
     def __init__(
         self,
         vae_id: str = "Efficient-Large-Model/Sana_1600M_512px_diffusers",
+        cache_dir: str = "/nfshomes/asarkar6/trinity/model_weights/",
         input_size: int = 16,
         in_channels: int = 32,
         vae_downsample_f: int = 32,
@@ -50,6 +51,7 @@ class MetaQueryConfig(MLLMInContextConfig):
         for key, value in kwargs.items():
             setattr(self, key, value)
         self.vae_id = vae_id
+        self.cache_dir = cache_dir
         self.input_size = input_size
         self.in_channels = in_channels
         self.vae_downsample_f = vae_downsample_f
@@ -73,12 +75,12 @@ class MetaQuery(PreTrainedModel):
         self.loss_type = config.loss_type
 
         if "Sana" in config.vae_id:
-            self.vae = AutoencoderDC.from_pretrained(config.vae_id, subfolder="vae")
+            self.vae = AutoencoderDC.from_pretrained(config.vae_id, subfolder="vae", cache_dir=config.cache_dir)
         else:
             try:
-                self.vae = AutoencoderKL.from_pretrained(config.vae_id)
+                self.vae = AutoencoderKL.from_pretrained(config.vae_id, cache_dir=config.cache_dir)
             except:
-                self.vae = AutoencoderKL.from_pretrained(config.vae_id, subfolder="vae")
+                self.vae = AutoencoderKL.from_pretrained(config.vae_id, subfolder="vae", cache_dir=config.cache_dir)
 
         if self.loss_type == "flow":
             self.noise_scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(

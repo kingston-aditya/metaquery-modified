@@ -23,6 +23,21 @@ from diffusers import SanaTransformer2DModel, UNet2DConditionModel
 
 from models.transformer_encoder import Qwen2Encoder
 
+import sys
+import pdb as pdb_original
+
+class ForkedPdb(pdb_original.Pdb):
+    """A Pdb subclass that may be used
+    from a forked multiprocessing child
+    """
+    def interaction(self, *args, **kwargs):
+        _stdin = sys.stdin
+        try:
+            sys.stdin = open('/dev/stdin')
+            pdb_original.Pdb.interaction(self, *args, **kwargs)
+        finally:
+            sys.stdin = _stdin
+
 
 class MLLMInContextConfig(PretrainedConfig):
     model_type = "mllm-in-context"
@@ -30,18 +45,20 @@ class MLLMInContextConfig(PretrainedConfig):
     def __init__(
         self,
         mllm_id: str = "llava-hf/llava-onevision-qwen2-0.5b-ov-hf",
+        cache_dir: str = "/nfshomes/asarkar6/trinity/model_weights/",
         diffusion_model_id: str = "Efficient-Large-Model/Sana_1600M_512px_diffusers",
         in_channels: int = 32,
         input_size: int = 32,
         num_metaqueries: int = 64,
         _gradient_checkpointing: bool = True,
         max_input_text_tokens: int = 256,
-        connector_num_hidden_layers: int = 24,
+        connector_num_hidden_layers: int = 4,
         system_prompt: str = "You will be given an image or its caption. Please describe the content of the image in detail in your own words.",
         **kwargs,
     ):
         super().__init__()
         self.mllm_id = mllm_id
+        self.cache_dir = cache_dir
         self.diffusion_model_id = diffusion_model_id
         self.in_channels = in_channels
         self.input_size = input_size
@@ -73,7 +90,7 @@ class MLLMInContext(PreTrainedModel):
 
         if self.mllm_type == "llavaov":
             self.mllm_backbone = LlavaOnevisionForConditionalGeneration.from_pretrained(
-                config.mllm_id, attn_implementation="sdpa"
+                config.mllm_id, attn_implementation="sdpa", cache_dir=config.cache_dir
             )
             self.mllm_backbone.language_model.config.use_sliding_window = False
             self.mllm_backbone.language_model.config.sliding_window = None
@@ -106,7 +123,7 @@ class MLLMInContext(PreTrainedModel):
 
         elif self.mllm_type == "qwenvl":
             self.mllm_backbone = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-                config.mllm_id, attn_implementation="sdpa"
+                config.mllm_id, attn_implementation="sdpa", cache_dir=config.cache_dir
             )
             self.mllm_backbone.model.config.use_sliding_window = False
             self.mllm_backbone.model.config.sliding_window = None
@@ -174,6 +191,7 @@ class MLLMInContext(PreTrainedModel):
                 config.diffusion_model_id,
                 subfolder="transformer",
                 torch_dtype=torch.bfloat16,
+                cache_dir=config.cache_dir
             )
             # self.transformer.caption_projection = nn.Identity()
             input_scale = math.sqrt(5.5)
@@ -181,7 +199,7 @@ class MLLMInContext(PreTrainedModel):
 
         elif "stable-diffusion-v1-5" in config.diffusion_model_id:
             self.transformer = UNet2DConditionModel.from_pretrained(
-                config.diffusion_model_id, subfolder="unet"
+                config.diffusion_model_id, subfolder="unet", cache_dir=config.cache_dir
             )
             input_scale = 1
             # 768
@@ -283,19 +301,23 @@ class MLLMInContext(PreTrainedModel):
             )
             for cap in caption
         ]
+
+        # object images being processed here.
         if image is not None:
+
             # If image is not a list, wrap it in a list
             if not isinstance(image, list):
                 image = [image]
+            
             # If each batch item is not a list, wrap it in a single-element list (or empty list if None)
             for i, img in enumerate(image):
-                if img and not isinstance(img, list):
+                if not isinstance(img, list):
                     image[i] = [img]
 
             # Resize each image in each batch if resize_fn is not None
             if tokenizer.resize_fn is not None:
                 image = [
-                    [tokenizer.resize_fn(sub_img) for sub_img in imgs] if imgs else None
+                    [tokenizer.resize_fn(sub_img) if sub_img else None for sub_img in imgs]
                     for imgs in image
                 ]
 
@@ -307,14 +329,14 @@ class MLLMInContext(PreTrainedModel):
                         "content": (
                             [{"type": "image"} for _ in imgs]
                             + [{"type": "text", "text": cap}]
-                            if imgs
+                            if all(x is not None for x in imgs)
                             else [{"type": "text", "text": cap}]
                         ),
                     },
                 ]
                 for cap, imgs in zip(caption, image)
             ]
-            kwargs = {"images": [imgs for imgs in image if imgs]}
+            kwargs = {"images": [imgs for imgs in image if all(x is not None for x in imgs)]}
 
         elif tokenizer.mllm_type in ["qwenlm", "llamaml"]:
             conversations = [
@@ -350,6 +372,7 @@ class MLLMInContext(PreTrainedModel):
             prompts = [p + t.strip() for p, t in zip(prompts, text_response)]
         if tokenizer.num_metaqueries > 0:
             prompts = [p + suffix for p in prompts]
+        
         text_inputs = tokenizer(
             text=prompts,
             return_tensors="pt",
